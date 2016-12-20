@@ -252,7 +252,7 @@ Pipeline<R, W>::close() {
   if (!back_) {
     throw std::invalid_argument("close(): no outbound handler in Pipeline");
   }
-  return back_->close();
+  return back_->close();// write
 }
 
 // TODO Have read/write/etc check that pipeline has been finalized

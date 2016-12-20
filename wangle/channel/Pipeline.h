@@ -213,8 +213,8 @@ class Pipeline : public PipelineBase {
  private:
   bool isStatic_{false};
 
-  InboundLink<R>* front_{nullptr};
-  OutboundLink<W>* back_{nullptr};
+  InboundLink<R>* front_{nullptr};// inbound类型（read）
+  OutboundLink<W>* back_{nullptr};// outbound类型 (write)
 };
 
 } // namespace wangle
