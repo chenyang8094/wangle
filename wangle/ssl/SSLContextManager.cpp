@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2016, Facebook, Inc.
+ *  Copyright (c) 2017, Facebook, Inc.
  *  All rights reserved.
  *
  *  This source code is licensed under the BSD-style license found in the
@@ -13,6 +13,7 @@
 #include <wangle/ssl/DHParam.h>
 #include <wangle/ssl/PasswordInFile.h>
 #include <wangle/ssl/SSLCacheOptions.h>
+#include <wangle/ssl/ServerSSLContext.h>
 #include <wangle/ssl/SSLSessionCacheManager.h>
 #include <wangle/ssl/SSLUtil.h>
 #include <wangle/ssl/TLSTicketKeyManager.h>
@@ -72,16 +73,6 @@ X509* getX509(SSL_CTX* ctx) {
   return x509;
 }
 
-int getPkeyType(X509 *x509) {
-  int ret = 0;
-  EVP_PKEY* evpPkey = X509_get_pubkey(x509);
-  if (evpPkey != nullptr) {
-    ret = evpPkey->type;
-    EVP_PKEY_free(evpPkey);
-  }
-  return ret;
-}
-
 void set_key_from_curve(SSL_CTX* ctx, const std::string& curveName) {
 #if OPENSSL_VERSION_NUMBER >= 0x0090800fL
 #ifndef OPENSSL_NO_ECDH
@@ -110,33 +101,6 @@ void set_key_from_curve(SSL_CTX* ctx, const std::string& curveName) {
   EC_KEY_free(ecdh);
 #endif
 #endif
-}
-
-// Helper to create TLSTicketKeyManger and aware of the needed openssl
-// version/feature.
-std::unique_ptr<TLSTicketKeyManager> createTicketManagerHelper(
-  std::shared_ptr<folly::SSLContext> ctx,
-  const TLSTicketKeySeeds* ticketSeeds,
-  const SSLContextConfig& ctxConfig,
-  SSLStats* stats) {
-
-  std::unique_ptr<TLSTicketKeyManager> ticketManager;
-#ifdef SSL_CTRL_SET_TLSEXT_TICKET_KEY_CB
-  if (ticketSeeds && ctxConfig.sessionTicketEnabled) {
-    ticketManager = folly::make_unique<TLSTicketKeyManager>(ctx.get(), stats);
-    ticketManager->setTLSTicketKeySeeds(
-      ticketSeeds->oldSeeds,
-      ticketSeeds->currentSeeds,
-      ticketSeeds->newSeeds);
-  } else {
-    ctx->setOptions(SSL_OP_NO_TICKET);
-  }
-#else
-  if (ticketSeeds && ctxConfig.sessionTicketEnabled) {
-    OPENSSL_MISSING_FEATURE(TLSTicket);
-  }
-#endif
-  return ticketManager;
 }
 
 std::string flattenList(const std::list<std::string>& list) {
@@ -170,8 +134,6 @@ SSLContextManager::SSLContextManager(
 
 void SSLContextManager::SslContexts::swap(SslContexts& other) noexcept {
   ctxs.swap(other.ctxs);
-  sessionCacheManagers.swap(other.sessionCacheManagers);
-  ticketManagers.swap(other.ticketManagers);
   defaultCtx.swap(other.defaultCtx);
   defaultCtxDomainName.swap(other.defaultCtxDomainName);
   dnMap.swap(other.dnMap);
@@ -179,8 +141,6 @@ void SSLContextManager::SslContexts::swap(SslContexts& other) noexcept {
 
 void SSLContextManager::SslContexts::clear() {
   ctxs.clear();
-  sessionCacheManagers.clear();
-  ticketManagers.clear();
   defaultCtx = nullptr;
   defaultCtxDomainName.clear();
   dnMap.clear();
@@ -197,11 +157,18 @@ void SSLContextManager::resetSSLContextConfigs(
   TLSTicketKeySeeds oldTicketSeeds;
   // This assumes that all ctxs have the same ticket seeds. Which we assume in
   // other places as well
-  if (!ticketSeeds && !contexts_.ticketManagers.empty()) {
-    contexts_.ticketManagers[0]->getTLSTicketKeySeeds(
-        oldTicketSeeds.oldSeeds,
-        oldTicketSeeds.currentSeeds,
-        oldTicketSeeds.newSeeds);
+  if (!ticketSeeds) {
+    // find first non null ticket manager and update seeds from it
+    for (auto& ctx : contexts_.ctxs) {
+      auto ticketManager = ctx->getTicketManager();
+      if (ticketManager) {
+        ticketManager->getTLSTicketKeySeeds(
+          oldTicketSeeds.oldSeeds,
+          oldTicketSeeds.currentSeeds,
+          oldTicketSeeds.newSeeds);
+        break;
+      }
+    }
   }
 
   for (const auto& ctxConfig : ctxConfigs) {
@@ -231,7 +198,8 @@ void SSLContextManager::addSSLContextConfig(
   std::string commonName;
   std::string lastCertPath;
   std::unique_ptr<std::list<std::string>> subjectAltName;
-  auto sslCtx = std::make_shared<SSLContext>(ctxConfig.sslVersion);
+  auto sslCtx =
+      std::make_shared<ServerSSLContext>(ctxConfig.sslVersion);
   for (const auto& cert : ctxConfig.certificates) {
     try {
       sslCtx->loadCertificate(cert.certPath.c_str());
@@ -288,20 +256,9 @@ void SSLContextManager::addSSLContextConfig(
     }
     lastCertPath = cert.certPath;
 
-    int pkeyType = getPkeyType(x509);
     if (ctxConfig.isLocalPrivateKey
-#ifdef SSL_ERROR_WANT_ECDSA_ASYNC_PENDING
-        // In case we're building with EC async changes, but still want to
-        // disable EC offload via config
-        || (ctxConfig.keyOffloadParams.offloadType.count("ec") == 0)
-#else
-        // We are not building with the ECDSA async changes, so for all
-        // non-RSA keytypes, we set the privkey in the CTX
-        || (pkeyType != EVP_PKEY_RSA)
-#endif
-        ) {
+        || ctxConfig.keyOffloadParams.offloadType.empty()) {
       // The private key lives in the same process
-
       // This needs to be called before loadPrivateKey().
       if (!cert.passwordPath.empty()) {
         auto sslPassword = std::make_shared<PasswordInFile>(cert.passwordPath);
@@ -319,11 +276,9 @@ void SSLContextManager::addSSLContextConfig(
         LOG(ERROR) << msg;
         throw std::runtime_error(msg);
       }
+    } else {
+      enableAsyncCrypto(sslCtx, ctxConfig, cert.certPath);
     }
-  }
-
-  if (!ctxConfig.isLocalPrivateKey) {
-    enableAsyncCrypto(sslCtx, ctxConfig);
   }
 
   overrideConfiguration(sslCtx, ctxConfig);
@@ -387,48 +342,22 @@ void SSLContextManager::addSSLContextConfig(
     }
   }
 
-  // - start - SSL session cache config
-  // the internal cache never does what we want (per-thread-per-vip).
-  // Disable it.  SSLSessionCacheManager will set it appropriately.
-  SSL_CTX_set_session_cache_mode(sslCtx->getSSLCtx(), SSL_SESS_CACHE_OFF);
-  SSL_CTX_set_timeout(sslCtx->getSSLCtx(),
-                      cacheOptions.sslCacheTimeout.count());
-  std::string sessionContext;
-  if (ctxConfig.sessionContext) {
-    sessionContext = *ctxConfig.sessionContext;
-  } else {
-    sessionContext = commonName;
-  }
-  std::unique_ptr<SSLSessionCacheManager> sessionCacheManager;
-  if (ctxConfig.sessionCacheEnabled &&
-      cacheOptions.maxSSLCacheSize > 0 &&
-      cacheOptions.sslCacheFlushSize > 0) {
-    sessionCacheManager =
-      folly::make_unique<SSLSessionCacheManager>(
-        cacheOptions.maxSSLCacheSize,
-        cacheOptions.sslCacheFlushSize,
-        sslCtx.get(),
-        vipAddress,
-        sessionContext,
-        eventBase_,
-        stats_,
-        externalCache);
-  }
-  // even though SSLSessionCacheManager might set the context if enabled,
-  // we also want to setup the context in case a cache is not enabled.
-  sslCtx->setSessionCacheContext(sessionContext);
-  // - end - SSL session cache config
+  sslCtx->setupSessionCache(
+      ctxConfig,
+      cacheOptions,
+      vipAddress,
+      externalCache,
+      commonName,
+      eventBase_,
+      stats_);
 
-  std::unique_ptr<TLSTicketKeyManager> ticketManager =
-    createTicketManagerHelper(sslCtx, ticketSeeds, ctxConfig, stats_);
+  sslCtx->setupTicketManager(ticketSeeds, ctxConfig, stats_);
 
   // finalize sslCtx setup by the individual features supported by openssl
   ctxSetupByOpensslFeature(sslCtx, ctxConfig, *contexts);
 
   try {
     insert(sslCtx,
-           std::move(sessionCacheManager),
-           std::move(ticketManager),
            ctxConfig.isDefault,
            *contexts);
   } catch (const std::exception& ex) {
@@ -538,7 +467,7 @@ SSLContextManager::serverNameCallback(SSL* ssl) {
 // Consolidate all SSL_CTX setup which depends on openssl version/feature
 void
 SSLContextManager::ctxSetupByOpensslFeature(
-  shared_ptr<folly::SSLContext> sslCtx,
+  shared_ptr<ServerSSLContext> sslCtx,
   const SSLContextConfig& ctxConfig,
   SslContexts& contexts) {
   // Disable compression - profiling shows this to be very expensive in
@@ -616,9 +545,7 @@ SSLContextManager::ctxSetupByOpensslFeature(
 }
 
 void
-SSLContextManager::insert(shared_ptr<SSLContext> sslCtx,
-                          std::unique_ptr<SSLSessionCacheManager> smanager,
-                          std::unique_ptr<TLSTicketKeyManager> tmanager,
+SSLContextManager::insert(shared_ptr<ServerSSLContext> sslCtx,
                           bool defaultFallback,
                           SslContexts& contexts) {
   X509* x509 = getX509(sslCtx->getSSLCtx());
@@ -653,8 +580,6 @@ SSLContextManager::insert(shared_ptr<SSLContext> sslCtx,
       throw std::runtime_error("STAR X509 is not the default");
     }
     contexts.ctxs.emplace_back(sslCtx);
-    contexts.sessionCacheManagers.emplace_back(std::move(smanager));
-    contexts.ticketManagers.emplace_back(std::move(tmanager));
     return;
   }
 
@@ -693,8 +618,6 @@ SSLContextManager::insert(shared_ptr<SSLContext> sslCtx,
   }
 
   contexts.ctxs.emplace_back(sslCtx);
-  contexts.sessionCacheManagers.emplace_back(std::move(smanager));
-  contexts.ticketManagers.emplace_back(std::move(tmanager));
 }
 
 void
@@ -845,8 +768,11 @@ SSLContextManager::reloadTLSTicketKeys(
   const std::vector<std::string>& currentSeeds,
   const std::vector<std::string>& newSeeds) {
 #ifdef SSL_CTRL_SET_TLSEXT_TICKET_KEY_CB
-  for (auto& tmgr: contexts_.ticketManagers) {
-    tmgr->setTLSTicketKeySeeds(oldSeeds, currentSeeds, newSeeds);
+  for (auto& ctx : contexts_.ctxs) {
+    auto tmgr = ctx->getTicketManager();
+    if (tmgr) {
+      tmgr->setTLSTicketKeySeeds(oldSeeds, currentSeeds, newSeeds);
+    }
   }
 #endif
 }
