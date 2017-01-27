@@ -37,16 +37,13 @@ class SecurityProtocolContextManager;
 class SSLContextManager;
 
 /**
- * An abstract acceptor for TCP-based network services.
- *
- * There is one acceptor object per thread for each listening socket.  When a
- * new connection arrives on the listening socket, it is accepted by one of the
- * acceptor objects.  From that point on the connection will be processed by
- * that acceptor's thread.
- *
- * The acceptor will call the abstract onNewConnection() method to create
- * a new ManagedConnection object for each accepted socket.  The acceptor
- * also tracks all outstanding connections that it has accepted.
+  An abstract acceptor for TCP-based network services.
+ 
+  对于每个监听中的套接字，每个线程有一个Acceptor对象。 当一个新连接到达监听套接字时，它被其中一个Acceptor接收。
+  此时，连接将被处理那个Acceptor线程处理。
+ 
+  acceptor将调用抽象的 onNewConnection（）方法为每个被accepted的socket创建新的ManagedConnection对象。Acceptor
+   也跟踪它已经accepted的所有未完成的连接。
  */
 class Acceptor :
   public folly::AsyncServerSocket::AcceptCallback,
@@ -112,7 +109,7 @@ class Acceptor :
   virtual folly::EventBase* getEventBase() const { return base_; }
 
   /**
-   * Access the Acceptor's downstream (client-side) ConnectionManager
+   * Access the Acceptor's downstream (client-side客户端) ConnectionManager
    */
   virtual wangle::ConnectionManager* getConnectionManager() {
     return downstreamConnectionManager_.get();
@@ -216,8 +213,11 @@ class Acceptor :
     TransportInfo& tinfo) noexcept;
 
   /**
-   * Drains all open connections of their outstanding transactions. When
-   * a connection's transaction count reaches zero, the connection closes.
+    Drains all open connections of their outstanding transactions. When
+    a connection's transaction count reaches zero, the connection closes.
+
+    排除所有未完成事物的打开连接。 什么时候
+     连接的事务计数到达零，连接就关闭。
    */
   void drainAllConnections();
 
@@ -379,9 +379,8 @@ class Acceptor :
   virtual void onConnectionsDrained() {}
 
   // AsyncServerSocket::AcceptCallback methods
-  void connectionAccepted(int fd,
-      const folly::SocketAddress& clientAddr)
-      noexcept;
+  // folly::AsyncServerSocket::AcceptCallback
+  void connectionAccepted(int fd,const folly::SocketAddress& clientAddr) noexcept;
   void acceptError(const std::exception& ex) noexcept;
   void acceptStopped() noexcept;
 
@@ -439,9 +438,10 @@ class Acceptor :
   LoadShedConfiguration loadShedConfig_;
   IConnectionCounter* connectionCounter_{nullptr};
   std::shared_ptr<SSLCacheProvider> cacheProvider_;
-  std::chrono::milliseconds gracefulShutdownTimeout_{5000};
+  std::chrono::milliseconds gracefulShutdownTimeout_{5000};//优雅关闭超时时间
 };
 
+// acceptor工厂
 class AcceptorFactory {
  public:
   virtual std::shared_ptr<Acceptor> newAcceptor(folly::EventBase*) = 0;

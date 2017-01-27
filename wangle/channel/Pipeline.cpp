@@ -78,6 +78,7 @@ PipelineBase& PipelineBase::removeBack() {
 
 void PipelineBase::detachHandlers() {
   for (auto& ctx : ctxs_) {
+    // 不会分离设置为owner_的Handler
     if (ctx != owner_) {
       ctx->detachPipeline();
     }

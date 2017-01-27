@@ -22,10 +22,12 @@ class ConnectionManager;
 /**
  * Interface describing a connection that can be managed by a
  * container such as an Acceptor.
+ *
+ * 可以被管理的connection
  */
 class ManagedConnection:
-    public folly::HHWheelTimer::Callback,
-    public folly::DelayedDestruction {
+    public folly::HHWheelTimer::Callback,//定时器回调
+    public folly::DelayedDestruction {   //延迟销毁
  public:
 
   ManagedConnection();

@@ -16,32 +16,32 @@ using folly::RWSpinLock;
 namespace wangle {
 
 ThreadPoolExecutor::ThreadPoolExecutor(
-    size_t /* numThreads */,
-    std::shared_ptr<ThreadFactory> threadFactory,
-    bool isWaitForAll)
-    : threadFactory_(std::move(threadFactory)),
-      isWaitForAll_(isWaitForAll),
-      taskStatsSubject_(std::make_shared<Subject<TaskStats>>()) {}
+  size_t /* numThreads */,
+  std::shared_ptr<ThreadFactory> threadFactory,
+  bool isWaitForAll)
+  : threadFactory_(std::move(threadFactory)),
+    isWaitForAll_(isWaitForAll),
+    taskStatsSubject_(std::make_shared<Subject<TaskStats>>()) {}
 
 ThreadPoolExecutor::~ThreadPoolExecutor() {
   CHECK_EQ(0, threadList_.get().size());
 }
 
 ThreadPoolExecutor::Task::Task(
-    Func&& func,
-    std::chrono::milliseconds expiration,
-    Func&& expireCallback)
-    : func_(std::move(func)),
-      expiration_(expiration),
-      expireCallback_(std::move(expireCallback)),
-      context_(folly::RequestContext::saveContext()) {
+  Func&& func,
+  std::chrono::milliseconds expiration,
+  Func&& expireCallback)
+  : func_(std::move(func)),
+    expiration_(expiration),
+    expireCallback_(std::move(expireCallback)),
+    context_(folly::RequestContext::saveContext()) {
   // Assume that the task in enqueued on creation
   enqueueTime_ = std::chrono::steady_clock::now();
 }
 
 void ThreadPoolExecutor::runTask(
-    const ThreadPtr& thread,
-    Task&& task) {
+  const ThreadPtr& thread,
+  Task&& task) {
   thread->idle = false;
   auto startTime = std::chrono::steady_clock::now();
   task.stats_.waitTime = startTime - task.enqueueTime_;
@@ -57,10 +57,10 @@ void ThreadPoolExecutor::runTask(
       task.func_();
     } catch (const std::exception& e) {
       LOG(ERROR) << "ThreadPoolExecutor: func threw unhandled " <<
-                    typeid(e).name() << " exception: " << e.what();
+                 typeid(e).name() << " exception: " << e.what();
     } catch (...) {
       LOG(ERROR) << "ThreadPoolExecutor: func threw unhandled non-exception "
-                    "object";
+                 "object";
     }
     task.stats_.runTime = std::chrono::steady_clock::now() - startTime;
   }
@@ -101,7 +101,7 @@ void ThreadPoolExecutor::addThreads(size_t n) {
     // TODO need a notion of failing to create the thread
     // and then handling for that case
     thread->handle = threadFactory_->newThread(
-        std::bind(&ThreadPoolExecutor::threadRun, this, thread));
+                       std::bind(&ThreadPoolExecutor::threadRun, this, thread));
     threadList_.add(thread);
   }
   for (auto& thread : newThreads) {
@@ -174,14 +174,14 @@ ThreadPoolExecutor::PoolStats ThreadPoolExecutor::getPoolStats() {
 std::atomic<uint64_t> ThreadPoolExecutor::Thread::nextId(0);
 
 void ThreadPoolExecutor::StoppedThreadQueue::add(
-    ThreadPoolExecutor::ThreadPtr item) {
+  ThreadPoolExecutor::ThreadPtr item) {
   std::lock_guard<std::mutex> guard(mutex_);
   queue_.push(std::move(item));
   sem_.post();
 }
 
 ThreadPoolExecutor::ThreadPtr ThreadPoolExecutor::StoppedThreadQueue::take() {
-  while(1) {
+  while (1) {
     {
       std::lock_guard<std::mutex> guard(mutex_);
       if (queue_.size() > 0) {
@@ -199,14 +199,17 @@ size_t ThreadPoolExecutor::StoppedThreadQueue::size() {
   return queue_.size();
 }
 
+// 为线程池添加观察者
 void ThreadPoolExecutor::addObserver(std::shared_ptr<Observer> o) {
   RWSpinLock::ReadHolder r{&threadListLock_};
   observers_.push_back(o);
+  // 遍历线程列表，分别为每个线程调用观察者的threadPreviouslyStarted
   for (auto& thread : threadList_.get()) {
     o->threadPreviouslyStarted(thread.get());
   }
 }
 
+// 移除观察者
 void ThreadPoolExecutor::removeObserver(std::shared_ptr<Observer> o) {
   RWSpinLock::ReadHolder r{&threadListLock_};
   for (auto& thread : threadList_.get()) {

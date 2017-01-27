@@ -33,7 +33,7 @@ using SerializePipeline = wangle::Pipeline<IOBufQueue&, Xtruct>;
 DEFINE_int32(port, 8080, "test server port");
 
 class RpcService : public Service<Bonk, Xtruct> {
- public:
+public:
   virtual Future<Xtruct> operator()(Bonk request) override {
     // Oh no, we got Bonked!  Quick, Bonk back
     printf("Bonk: %s, %i\n", request.message.c_str(), request.type);
@@ -43,19 +43,18 @@ class RpcService : public Service<Bonk, Xtruct> {
      */
     // Wait for a bit
     return futures::sleep(std::chrono::seconds(request.type))
-        .then([request]() {
-          Xtruct response;
-          response.string_thing = "Stop saying " + request.message + "!";
-          response.i32_thing = request.type;
-          return response;
-        });
+    .then([request]() {
+      Xtruct response;
+      response.string_thing = "Stop saying " + request.message + "!";
+      response.i32_thing = request.type;
+      return response;
+    });
   }
 };
 
 class RpcPipelineFactory : public PipelineFactory<SerializePipeline> {
- public:
-  SerializePipeline::Ptr newPipeline(
-      std::shared_ptr<AsyncTransportWrapper> sock) {
+public:
+  SerializePipeline::Ptr newPipeline(std::shared_ptr<AsyncTransportWrapper> sock) {
     auto pipeline = SerializePipeline::create();
     pipeline->addBack(AsyncSocketHandler(sock));
     // ensure we can write from any thread
@@ -73,10 +72,11 @@ class RpcPipelineFactory : public PipelineFactory<SerializePipeline> {
     return pipeline;
   }
 
- private:
+private:
   ExecutorFilter<Bonk, Xtruct> service_{
-      std::make_shared<CPUThreadPoolExecutor>(10),
-      std::make_shared<RpcService>()};
+    std::make_shared<CPUThreadPoolExecutor>(10),
+    std::make_shared<RpcService>()// 此处也是用的shared_ptr
+  };
 };
 
 int main(int argc, char** argv) {

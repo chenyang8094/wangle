@@ -20,11 +20,8 @@ namespace wangle {
 template <typename Req, typename Resp = Req>
 class ExecutorFilter : public ServiceFilter<Req, Resp> {
  public:
- explicit ExecutorFilter(
-   std::shared_ptr<folly::Executor> exe,
-   std::shared_ptr<Service<Req, Resp>> service)
-      : ServiceFilter<Req, Resp>(service)
-      , exe_(exe) {}
+ explicit ExecutorFilter(std::shared_ptr<folly::Executor> exe,std::shared_ptr<Service<Req, Resp>> service)
+      : ServiceFilter<Req, Resp>(service), exe_(exe) {}
 
  folly::Future<Resp> operator()(Req req) override {
    return via(exe_.get()).then([ req = std::move(req), this ]() mutable {
@@ -33,6 +30,7 @@ class ExecutorFilter : public ServiceFilter<Req, Resp> {
   }
 
  private:
+ // 执行器
   std::shared_ptr<folly::Executor> exe_;
 };
 

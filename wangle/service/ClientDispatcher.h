@@ -16,8 +16,7 @@
 namespace wangle {
 
 template <typename Pipeline, typename Req, typename Resp = Req>
-class ClientDispatcherBase : public HandlerAdapter<Resp, Req>
-                             , public Service<Req, Resp> {
+class ClientDispatcherBase : public HandlerAdapter<Resp, Req>, public Service<Req, Resp> {
  public:
   typedef typename HandlerAdapter<Resp, Req>::Context Context;
 
@@ -55,26 +54,29 @@ class ClientDispatcherBase : public HandlerAdapter<Resp, Req>
 };
 
 /**
- * Dispatch a request, satisfying Promise `p` with the response;
- * the returned Future is satisfied when the response is received:
- * only one request is allowed at a time.
+
+  派发一个请求，承诺一个Promise`p`包含响应;当接收到响应时，返回的Future会被填充：
+  一次只允许一个请求。
  */
 template <typename Pipeline, typename Req, typename Resp = Req>
-class SerialClientDispatcher
-    : public ClientDispatcherBase<Pipeline, Req, Resp> {
+class SerialClientDispatcher : public ClientDispatcherBase<Pipeline, Req, Resp> {
  public:
   typedef typename HandlerAdapter<Resp, Req>::Context Context;
 
+  // 接收response
   void read(Context*, Resp in) override {
     DCHECK(p_);
+    // 设置future
     p_->setValue(std::move(in));
     p_ = folly::none;
   }
 
+  // 发送request
   virtual folly::Future<Resp> operator()(Req arg) override {
     CHECK(!p_);
     DCHECK(this->pipeline_);
 
+    // 创建Promise
     p_ = folly::Promise<Resp>();
     auto f = p_->getFuture();
     this->pipeline_->write(std::move(arg));
@@ -91,14 +93,14 @@ class SerialClientDispatcher
  * A deque of promises/futures are mantained for pipelining.
  */
 template <typename Pipeline, typename Req, typename Resp = Req>
-class PipelinedClientDispatcher
-    : public ClientDispatcherBase<Pipeline, Req, Resp> {
+class PipelinedClientDispatcher : public ClientDispatcherBase<Pipeline, Req, Resp> {
  public:
 
   typedef typename HandlerAdapter<Resp, Req>::Context Context;
 
   void read(Context*, Resp in) override {
     DCHECK(p_.size() >= 1);
+    // 按顺序取出promise
     auto p = std::move(p_.front());
     p_.pop_front();
     p.setValue(std::move(in));
@@ -109,13 +111,14 @@ class PipelinedClientDispatcher
 
     folly::Promise<Resp> p;
     auto f = p.getFuture();
+    // 添加到队列
     p_.push_back(std::move(p));
     this->pipeline_->write(std::move(arg));
     return f;
   }
 
  private:
-  std::deque<folly::Promise<Resp>> p_;
+  std::deque<folly::Promise<Resp>> p_;//队列
 };
 
 /*

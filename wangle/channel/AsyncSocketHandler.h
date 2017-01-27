@@ -20,12 +20,10 @@
 namespace wangle {
 
 // This handler may only be used in a single Pipeline
-class AsyncSocketHandler
-  : public wangle::BytesToBytesHandler,
-    public folly::AsyncTransportWrapper::ReadCallback {
+// 类似与Netty中的Unsafe接口，执行真正的IO操作(pipeline中的头Handler)
+class AsyncSocketHandler: public wangle::BytesToBytesHandler,public folly::AsyncTransportWrapper::ReadCallback {
  public:
-  explicit AsyncSocketHandler(
-      std::shared_ptr<folly::AsyncTransportWrapper> socket)
+  explicit AsyncSocketHandler(std::shared_ptr<folly::AsyncTransportWrapper> socket)
     : socket_(std::move(socket)) {}
 
   AsyncSocketHandler(AsyncSocketHandler&&) = default;
@@ -33,7 +31,7 @@ class AsyncSocketHandler
   ~AsyncSocketHandler() {
     detachReadCallback();
   }
-
+  // 非常重要
   void attachReadCallback() {
     socket_->setReadCB(socket_->good() ? this : nullptr);
   }
@@ -42,9 +40,11 @@ class AsyncSocketHandler
     if (socket_ && socket_->getReadCallback() == this) {
       socket_->setReadCB(nullptr);
     }
+    // 得到该Handler绑定的Context
     auto ctx = getContext();
     if (ctx && !firedInactive_) {
       firedInactive_ = true;
+      // 引发TransportInactive事件
       ctx->fireTransportInactive();
     }
   }
@@ -61,11 +61,13 @@ class AsyncSocketHandler
       socket_->detachEventBase();
     }
   }
-
+  // 在SercerConnection被创建之后，init的时后，调用pipeline_->transportActive();
   void transportActive(Context* ctx) override {
     ctx->getPipeline()->setTransport(socket_);
+    //当连接可用是，添加Read回调，也就是AsyncSocketHandler，这是第一个Handler!!!!
     attachReadCallback();
     firedInactive_ = false;
+    // 引发TransportInactive事件
     ctx->fireTransportActive();
   }
 
@@ -80,9 +82,7 @@ class AsyncSocketHandler
     detachReadCallback();
   }
 
-  folly::Future<folly::Unit> write(
-      Context* ctx,
-      std::unique_ptr<folly::IOBuf> buf) override {
+  folly::Future<folly::Unit> write(Context* ctx,std::unique_ptr<folly::IOBuf> buf) override {
     refreshTimeout();
     if (UNLIKELY(!buf)) {
       return folly::makeFuture();
@@ -123,15 +123,18 @@ class AsyncSocketHandler
     ctx->fireReadEOF();
   }
 
+  //ReadCallback  
+  //当数据变得可用时，getReadBuffer（）将被调用来获取缓冲器，用来存放读取数据。
   void getReadBuffer(void** bufReturn, size_t* lenReturn) override {
     const auto readBufferSettings = getContext()->getReadBufferSettings();
-    const auto ret = bufQueue_.preallocate(
-        readBufferSettings.first,
-        readBufferSettings.second);
+    const auto ret = bufQueue_.preallocate(readBufferSettings.first,readBufferSettings.second);
     *bufReturn = ret.first;
     *lenReturn = ret.second;
   }
 
+  //ReadCallback（在上面的attachReadCallback中设置）
+  //EventHandler::libeventCallback==》handler->handlerReady==》socket_->ioReady(events);==》handleRead()/handleWrite();
+  //readCallback_->readDataAvailable(bytesRead);
   void readDataAvailable(size_t len) noexcept override {
     refreshTimeout();
     bufQueue_.postallocate(len);

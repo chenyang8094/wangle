@@ -17,12 +17,15 @@
 
 namespace wangle {
 
+//服务端socket创建工厂
 class ServerSocketFactory {
  public:
+  // 创建一个异步socket
   virtual std::shared_ptr<folly::AsyncSocketBase> newSocket(
       folly::SocketAddress address, int backlog,
       bool reuse, ServerSocketConfig& config) = 0;
 
+  // 移除accept回调
   virtual void removeAcceptCB(
       std::shared_ptr<folly::AsyncSocketBase> sock,
       Acceptor *callback,
@@ -38,21 +41,25 @@ class ServerSocketFactory {
 
 class AsyncServerSocketFactory : public ServerSocketFactory {
  public:
+  // 创建一个新的连接AsyncSocket（代表客户端的）
   std::shared_ptr<folly::AsyncSocketBase> newSocket(
       folly::SocketAddress address, int /*backlog*/, bool reuse,
       ServerSocketConfig& config) override {
-
+    //获取当前线程的eventbase（一定会在accept线程）
     auto* evb = folly::EventBaseManager::get()->getEventBase();
-    std::shared_ptr<folly::AsyncServerSocket> socket(
-        new folly::AsyncServerSocket(evb),
-        ThreadSafeDestructor());
+    // 创建AsyncServerSocket
+    std::shared_ptr<folly::AsyncServerSocket> socket(new folly::AsyncServerSocket(evb),ThreadSafeDestructor());
+    //是否重用端口
     socket->setReusePortEnabled(reuse);
+    // 是否使能tcp的fastopen
     if (config.enableTCPFastOpen) {
       socket->setTFOEnabled(true, config.fastOpenQueueSize);
     }
+    // 绑定的地址
     socket->bind(address);
-
+    // 设置监听参数，启动监听
     socket->listen(config.acceptBacklog);
+    // 开始accept，这里不会阻塞，只是向事件层注册了持久的read事件
     socket->startAccepting();
 
     return socket;
@@ -65,8 +72,8 @@ class AsyncServerSocketFactory : public ServerSocketFactory {
     socket->removeAcceptCallback(callback, base);
   }
 
-  void addAcceptCB(std::shared_ptr<folly::AsyncSocketBase> s,
-                   Acceptor* callback, folly::EventBase* base) override {
+  // 添加一个accept回调
+  void addAcceptCB(std::shared_ptr<folly::AsyncSocketBase> s,Acceptor* callback, folly::EventBase* base) override {
     auto socket = std::dynamic_pointer_cast<folly::AsyncServerSocket>(s);
     CHECK(socket);
     socket->addAcceptCallback(callback, base);

@@ -11,10 +11,8 @@ template <typename Req, typename Resp = Req>
 class ExpiringFilter : public ServiceFilter<Req, Resp> {
  public:
   explicit ExpiringFilter(std::shared_ptr<Service<Req, Resp>> service,
-                 std::chrono::milliseconds idleTimeoutTime
-                 = std::chrono::milliseconds(0),
-                  std::chrono::milliseconds maxTime
-                 = std::chrono::milliseconds(0),
+                 std::chrono::milliseconds idleTimeoutTime = std::chrono::milliseconds(0),
+                  std::chrono::milliseconds maxTime = std::chrono::milliseconds(0),
                  folly::Timekeeper* timekeeper = nullptr)
   : ServiceFilter<Req, Resp>(service)
   , idleTimeoutTime_(idleTimeoutTime)

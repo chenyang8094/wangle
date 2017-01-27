@@ -17,8 +17,10 @@
 // Do some serialization / deserialization using thrift.
 // A real rpc server would probably use generated client/server stubs
 class ServerSerializeHandler : public wangle::Handler<
-  std::unique_ptr<folly::IOBuf>, thrift::test::Bonk,
-  thrift::test::Xtruct, std::unique_ptr<folly::IOBuf>> {
+     std::unique_ptr<folly::IOBuf>, 
+     thrift::test::Bonk,
+     thrift::test::Xtruct, 
+     std::unique_ptr<folly::IOBuf>> {
  public:
   virtual void read(Context* ctx, std::unique_ptr<folly::IOBuf> msg) override {
     thrift::test::Bonk received;

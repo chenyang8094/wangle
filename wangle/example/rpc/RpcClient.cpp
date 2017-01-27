@@ -23,8 +23,22 @@
 using namespace folly;
 using namespace wangle;
 
-using thrift::test::Bonk;
-using thrift::test::Xtruct;
+/*
+struct Bonk
+{
+  1: string message,
+  2: i32 type
+}
+struct Xtruct
+{
+  1:  string string_thing,
+  4:  byte   byte_thing,
+  9:  i32    i32_thing,
+  11: i64    i64_thing
+}
+ */
+using thrift::test::Bonk;// resquest
+using thrift::test::Xtruct;// response
 
 using SerializePipeline = wangle::Pipeline<IOBufQueue&, Bonk>;
 
@@ -33,8 +47,7 @@ DEFINE_string(host, "::1", "test server address");
 
 class RpcPipelineFactory : public PipelineFactory<SerializePipeline> {
  public:
-  SerializePipeline::Ptr newPipeline(
-      std::shared_ptr<AsyncTransportWrapper> sock) override {
+  SerializePipeline::Ptr newPipeline(std::shared_ptr<AsyncTransportWrapper> sock) override {
     auto pipeline = SerializePipeline::create();
     pipeline->addBack(AsyncSocketHandler(sock));
     // ensure we can write from any thread
@@ -49,9 +62,9 @@ class RpcPipelineFactory : public PipelineFactory<SerializePipeline> {
 };
 
 // Client multiplex dispatcher.  Uses Bonk.type as request ID
-class BonkMultiplexClientDispatcher
-    : public ClientDispatcherBase<SerializePipeline, Bonk, Xtruct> {
+class BonkMultiplexClientDispatcher : public ClientDispatcherBase<SerializePipeline, Bonk, Xtruct> {
  public:
+  // server response
   void read(Context*, Xtruct in) override {
     auto search = requests_.find(in.i32_thing);
     CHECK(search != requests_.end());
@@ -60,6 +73,7 @@ class BonkMultiplexClientDispatcher
     p.setValue(in);
   }
 
+  // client request
   Future<Xtruct> operator()(Bonk arg) override {
     auto& p = requests_[arg.type];
     auto f = p.getFuture();

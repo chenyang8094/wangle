@@ -27,6 +27,7 @@ namespace wangle {
 class PipelineBase;
 class Acceptor;
 
+// pipeline管理器
 class PipelineManager {
  public:
   virtual ~PipelineManager() = default;
@@ -34,24 +35,31 @@ class PipelineManager {
   virtual void refreshTimeout() {};
 };
 
+
+// pipeline 基类
 class PipelineBase : public std::enable_shared_from_this<PipelineBase> {
  public:
   virtual ~PipelineBase() = default;
 
+  // 设置PipelineManager
   void setPipelineManager(PipelineManager* manager) {
     manager_ = manager;
   }
 
+  // 获取PipelineManager
   PipelineManager* getPipelineManager() {
     return manager_;
   }
-
+  
+  // 删除pipeline
   void deletePipeline() {
     if (manager_) {
+      // 会调用PipelineManager的相应的方法
       manager_->deletePipeline(this);
     }
   }
 
+  // 设置一个异步AsyncTransport（为folly::AsyncSocket父类）
   void setTransport(std::shared_ptr<folly::AsyncTransport> transport) {
     transport_ = transport;
   }
@@ -59,13 +67,16 @@ class PipelineBase : public std::enable_shared_from_this<PipelineBase> {
   std::shared_ptr<folly::AsyncTransport> getTransport() {
     return transport_;
   }
-
+  
+  // 设置和获取write标识
   void setWriteFlags(folly::WriteFlags flags);
   folly::WriteFlags getWriteFlags();
 
+  // 设置和获取read缓冲区
   void setReadBufferSettings(uint64_t minAvailable, uint64_t allocationSize);
   std::pair<uint64_t, uint64_t> getReadBufferSettings();
-
+ 
+  // 设置和获取TransportInfo
   void setTransportInfo(std::shared_ptr<TransportInfo> tInfo);
   std::shared_ptr<TransportInfo> getTransportInfo();
 
@@ -109,9 +120,8 @@ class PipelineBase : public std::enable_shared_from_this<PipelineBase> {
   template <class H>
   typename ContextType<H>::type* getContext();
 
-  // If one of the handlers owns the pipeline itself, use setOwner to ensure
-  // that the pipeline doesn't try to detach the handler during destruction,
-  // lest destruction ordering issues occur.
+  // 如果handlers中的某一个拥有pipeline自身，那么需要使用setOwner来确保pipeline在销毁期间不分离
+  // 这个handler，以免发生破坏排序问题。
   // See thrift/lib/cpp2/async/Cpp2Channel.cpp for an example
   template <class H>
   bool setOwner(H* handler);
@@ -124,9 +134,9 @@ class PipelineBase : public std::enable_shared_from_this<PipelineBase> {
 
   void detachHandlers();
 
-  std::vector<std::shared_ptr<PipelineContext>> ctxs_;
-  std::vector<PipelineContext*> inCtxs_;
-  std::vector<PipelineContext*> outCtxs_;
+  std::vector<std::shared_ptr<PipelineContext>> ctxs_;  // 所有的PipelineContext
+  std::vector<PipelineContext*> inCtxs_;  // inbound 类型的PipelineContext
+  std::vector<PipelineContext*> outCtxs_; // outbound 类型的PipelineContext
 
  private:
   PipelineManager* manager_{nullptr};
@@ -139,22 +149,21 @@ class PipelineBase : public std::enable_shared_from_this<PipelineBase> {
   template <class H>
   PipelineBase& removeHelper(H* handler, bool checkEqual);
 
-  typedef std::vector<std::shared_ptr<PipelineContext>>::iterator
-    ContextIterator;
+  typedef std::vector<std::shared_ptr<PipelineContext>>::iterator ContextIterator;
 
   ContextIterator removeAt(const ContextIterator& it);
 
   folly::WriteFlags writeFlags_{folly::WriteFlags::NONE};
   std::pair<uint64_t, uint64_t> readBufferSettings_{2048, 2048};
 
-  std::shared_ptr<PipelineContext> owner_;
+  std::shared_ptr<PipelineContext> owner_;// 被哪个Context拥有
 };
 
 /*
  * R is the inbound type, i.e. inbound calls start with pipeline.read(R)
  * W is the outbound type, i.e. outbound calls start with pipeline.write(W)
  *
- * Use Unit for one of the types if your pipeline is unidirectional.
+ * Use Unit for one of the types if your pipeline is unidirectional（单向）.
  * If R is Unit, read(), readEOF(), and readException() will be disabled.
  * If W is Unit, write() and close() will be disabled.
  */
@@ -169,40 +178,41 @@ class Pipeline : public PipelineBase {
 
   ~Pipeline();
 
+  // 模板方法
   template <class T = R>
   typename std::enable_if<!std::is_same<T, folly::Unit>::value>::type
-  read(R msg);
+  read(R msg);//front_->read(std::forward<R>(msg)); --> this->handler_->read(this, std::forward<Rin>(msg));
 
   template <class T = R>
   typename std::enable_if<!std::is_same<T, folly::Unit>::value>::type
-  readEOF();
+  readEOF();//front_->readEOF();
 
   template <class T = R>
   typename std::enable_if<!std::is_same<T, folly::Unit>::value>::type
-  readException(folly::exception_wrapper e);
+  readException(folly::exception_wrapper e);//front_->readException(std::move(e));
 
   template <class T = R>
   typename std::enable_if<!std::is_same<T, folly::Unit>::value>::type
-  transportActive();
+  transportActive();// front_->transportActive();
 
   template <class T = R>
   typename std::enable_if<!std::is_same<T, folly::Unit>::value>::type
-  transportInactive();
+  transportInactive();//front_->transportInactive();
 
   template <class T = W>
   typename std::enable_if<!std::is_same<T, folly::Unit>::value,
                           folly::Future<folly::Unit>>::type
-  write(W msg);
+  write(W msg);//back_->write(std::forward<W>(msg));
 
   template <class T = W>
   typename std::enable_if<!std::is_same<T, folly::Unit>::value,
                           folly::Future<folly::Unit>>::type
-  writeException(folly::exception_wrapper e);
+  writeException(folly::exception_wrapper e);//back_->writeException(std::move(e));
 
   template <class T = W>
   typename std::enable_if<!std::is_same<T, folly::Unit>::value,
                           folly::Future<folly::Unit>>::type
-  close();
+  close();//back_->close()
 
   void finalize() override;
 
@@ -213,8 +223,8 @@ class Pipeline : public PipelineBase {
  private:
   bool isStatic_{false};
 
-  InboundLink<R>* front_{nullptr};// inbound类型（read）
-  OutboundLink<W>* back_{nullptr};// outbound类型 (write)
+  InboundLink<R>* front_{nullptr};// inbound类型Context（read）
+  OutboundLink<W>* back_{nullptr};// outbound类型Context (write)
 };
 
 } // namespace wangle
@@ -229,31 +239,35 @@ class AsyncUDPSocket;
 
 namespace wangle {
 
-using DefaultPipeline =
-    Pipeline<folly::IOBufQueue&, std::unique_ptr<folly::IOBuf>>;
+// 默认的Pipeline定义 R = folly::IOBufQueue,W = std::unique_ptr<folly::IOBuf>
+using DefaultPipeline = Pipeline<folly::IOBufQueue&, std::unique_ptr<folly::IOBuf>>;
 
+// 客户端pipeline工厂
 template <typename Pipeline>
 class PipelineFactory {
  public:
-  virtual typename Pipeline::Ptr newPipeline(
-      std::shared_ptr<folly::AsyncTransportWrapper>) = 0;
+  // Pipeline工厂需要实现这个工厂方法
+  virtual typename Pipeline::Ptr newPipeline(std::shared_ptr<folly::AsyncTransportWrapper>) = 0;
 
   virtual ~PipelineFactory() = default;
 };
 
+// 连接信息
 struct ConnInfo {
-  folly::AsyncTransportWrapper* sock;
-  const folly::SocketAddress* clientAddr;
+  folly::AsyncTransportWrapper* sock; // 异步socket指针
+  const folly::SocketAddress* clientAddr;// 客户端地址
   const std::string& nextProtoName;
   SecureTransportType secureType;
-  const TransportInfo& tinfo;
+  const TransportInfo& tinfo; //TransportInfo 
 };
 
+// 连接事件
 enum class ConnEvent {
-  CONN_ADDED,
-  CONN_REMOVED,
+  CONN_ADDED,//连接添加
+  CONN_REMOVED,//连接移除
 };
 
+//AcceptPipelineType可以持有的类型如下，默认类型为folly::IOBuf
 typedef boost::variant<folly::IOBuf*,
                        folly::AsyncTransportWrapper*,
                        ConnInfo&,
@@ -261,8 +275,9 @@ typedef boost::variant<folly::IOBuf*,
                        std::tuple<folly::IOBuf*,
                                   std::shared_ptr<folly::AsyncUDPSocket>,
                                   folly::SocketAddress>> AcceptPipelineType;
-typedef Pipeline<AcceptPipelineType> AcceptPipeline;
+typedef Pipeline<AcceptPipelineType> AcceptPipeline;// 专门用于accept的pipeline
 
+// 服务端pipeline 工厂
 class AcceptPipelineFactory {
  public:
   virtual typename AcceptPipeline::Ptr newPipeline(Acceptor* acceptor) = 0;

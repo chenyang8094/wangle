@@ -21,47 +21,44 @@
 namespace wangle {
 
 /**
- * A Service is an asynchronous function from Request to
+ * A Service is an synchronous function from Request to
  * Future<Response>. It is the basic unit of the RPC interface.
  */
 template <typename Req, typename Resp = Req>
 class Service {
- public:
+public:
+  // 开始调用
   virtual folly::Future<Resp> operator()(Req request) = 0;
   virtual ~Service() = default;
+
   virtual folly::Future<folly::Unit> close() {
     return folly::makeFuture();
   }
+
   virtual bool isAvailable() {
     return true;
   }
 };
 
 /**
- * A Filter acts as a decorator/transformer of a service. It may apply
- * transformations to the input and output of that service:
- *
- *          class MyService
- *
- * ReqA  -> |
- *          | -> ReqB
- *          | <- RespB
- * RespA <- |
- *
- * For example, you may have a service that takes Strings and parses
- * them as Ints.  If you want to expose this as a Network Service via
- * Thrift, it is nice to isolate the protocol handling from the
- * business rules. Hence you might have a Filter that converts back
- * and forth between Thrift structs:
- *
- * [ThriftIn -> (String  ->  Int) -> ThriftOut]
+  过滤器充当服务的装饰器/变换器。 它可能适用到该服务的输入和输出的转换：
+
+           class MyService
+
+  ReqA  -> |
+           | -> ReqB
+           | <- RespB
+  RespA <- |
+
+   例如，你可能有一个服务，接受字符串并把它们解析为整型。如果您想通过Thrift将暴露为一个网络服务
+   ，它能很好的隔离协议处理和业务规则。 因此，您可能有一个过滤器在Thrift结构之间来回转换：
+
+  [ThriftIn -> (String  ->  Int) -> ThriftOut]
  */
-template <typename ReqA, typename RespA,
-          typename ReqB = ReqA, typename RespB = RespA>
+template <typename ReqA, typename RespA,typename ReqB = ReqA, typename RespB = RespA>
 class ServiceFilter : public Service<ReqA, RespA> {
-  public:
-  explicit ServiceFilter(std::shared_ptr<Service<ReqB, RespB>> service)
-      : service_(service) {}
+public:
+  explicit ServiceFilter(std::shared_ptr<Service<ReqB, RespB>> service) : service_(service) {}
   virtual ~ServiceFilter() = default;
 
   virtual folly::Future<folly::Unit> close() override {
@@ -72,7 +69,7 @@ class ServiceFilter : public Service<ReqA, RespA> {
     return service_->isAvailable();
   }
 
- protected:
+protected:
   std::shared_ptr<Service<ReqB, RespB>> service_;
 };
 
@@ -84,7 +81,7 @@ class ServiceFilter : public Service<ReqA, RespA> {
  */
 template <typename Pipeline, typename Req, typename Resp>
 class ServiceFactory {
- public:
+public:
   virtual folly::Future<std::shared_ptr<Service<Req, Resp>>> operator()(
     std::shared_ptr<ClientBootstrap<Pipeline>> client) = 0;
 
@@ -95,53 +92,49 @@ class ServiceFactory {
 
 template <typename Pipeline, typename Req, typename Resp>
 class ConstFactory : public ServiceFactory<Pipeline, Req, Resp> {
- public:
-  explicit ConstFactory(std::shared_ptr<Service<Req, Resp>> service)
-      : service_(service) {}
+public:
+  explicit ConstFactory(std::shared_ptr<Service<Req, Resp>> service) : service_(service) {}
 
   virtual folly::Future<std::shared_ptr<Service<Req, Resp>>> operator()(
     std::shared_ptr<ClientBootstrap<Pipeline>> /* client */) {
     return service_;
   }
- private:
+private:
   std::shared_ptr<Service<Req, Resp>> service_;
 };
 
-template <typename Pipeline, typename ReqA, typename RespA,
-          typename ReqB = ReqA, typename RespB = RespA>
+template <typename Pipeline, typename ReqA, typename RespA,typename ReqB = ReqA, typename RespB = RespA>
 class ServiceFactoryFilter : public ServiceFactory<Pipeline, ReqA, RespA> {
- public:
+public:
   explicit ServiceFactoryFilter(
     std::shared_ptr<ServiceFactory<Pipeline, ReqB, RespB>> serviceFactory)
-      : serviceFactory_(std::move(serviceFactory)) {}
+    : serviceFactory_(std::move(serviceFactory)) {}
 
   virtual ~ServiceFactoryFilter() = default;
 
- protected:
+protected:
   std::shared_ptr<ServiceFactory<Pipeline, ReqB, RespB>> serviceFactory_;
 };
 
 template <typename Pipeline, typename Req, typename Resp = Req>
 class FactoryToService : public Service<Req, Resp> {
- public:
-  explicit FactoryToService(
-    std::shared_ptr<ServiceFactory<Pipeline, Req, Resp>> factory)
-      : factory_(factory) {}
+public:
+  explicit FactoryToService(std::shared_ptr<ServiceFactory<Pipeline, Req, Resp>> factory)
+    : factory_(factory) {}
   virtual ~FactoryToService() = default;
 
   virtual folly::Future<Resp> operator()(Req request) override {
     DCHECK(factory_);
-    return ((*factory_)(nullptr)).then(
-      [=](std::shared_ptr<Service<Req, Resp>> service)
-      {
-        return (*service)(std::move(request)).ensure(
-          [this]() {
-            this->close();
-          });
+    return ((*factory_)(nullptr)).then([ = ](std::shared_ptr<Service<Req, Resp>> service)
+    {
+      return (*service)(std::move(request)).ensure(
+      [this]() {
+        this->close();
       });
+    });
   }
 
- private:
+private:
   std::shared_ptr<ServiceFactory<Pipeline, Req, Resp>> factory_;
 };
 

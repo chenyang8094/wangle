@@ -18,21 +18,26 @@ namespace wangle {
 
 class PipelineBase;
 
+// HandlerContext定义(集inbound和outbound类型于一身)
+// 以fire开始的方法都是Context中的事件方法
 template <class In, class Out>
 class HandlerContext {
- public:
+public:
   virtual ~HandlerContext() = default;
 
+  // inbound类型事件接口
   virtual void fireRead(In msg) = 0;
   virtual void fireReadEOF() = 0;
   virtual void fireReadException(folly::exception_wrapper e) = 0;
   virtual void fireTransportActive() = 0;
   virtual void fireTransportInactive() = 0;
 
+  // outbound类型事件接口
   virtual folly::Future<folly::Unit> fireWrite(Out msg) = 0;
   virtual folly::Future<folly::Unit> fireWriteException(
-      folly::exception_wrapper e) = 0;
+    folly::exception_wrapper e) = 0;
   virtual folly::Future<folly::Unit> fireClose() = 0;
+
 
   virtual PipelineBase* getPipeline() = 0;
   virtual std::shared_ptr<PipelineBase> getPipelineShared() = 0;
@@ -44,8 +49,8 @@ class HandlerContext {
   virtual folly::WriteFlags getWriteFlags() = 0;
 
   virtual void setReadBufferSettings(
-      uint64_t minAvailable,
-      uint64_t allocationSize) = 0;
+    uint64_t minAvailable,
+    uint64_t allocationSize) = 0;
   virtual std::pair<uint64_t, uint64_t> getReadBufferSettings() = 0;
 
   /* TODO
@@ -59,9 +64,11 @@ class HandlerContext {
   */
 };
 
+
+// inbound 类型的InboundHandlerContext
 template <class In>
 class InboundHandlerContext {
- public:
+public:
   virtual ~InboundHandlerContext() = default;
 
   virtual void fireRead(In msg) = 0;
@@ -81,14 +88,16 @@ class InboundHandlerContext {
   // Could just always delegate to the socket impl
 };
 
+
+// outbound 类型的OutboundHandlerContext
 template <class Out>
 class OutboundHandlerContext {
- public:
+public:
   virtual ~OutboundHandlerContext() = default;
 
   virtual folly::Future<folly::Unit> fireWrite(Out msg) = 0;
   virtual folly::Future<folly::Unit> fireWriteException(
-      folly::exception_wrapper e) = 0;
+    folly::exception_wrapper e) = 0;
   virtual folly::Future<folly::Unit> fireClose() = 0;
 
   virtual PipelineBase* getPipeline() = 0;

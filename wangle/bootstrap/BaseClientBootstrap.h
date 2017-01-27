@@ -30,16 +30,19 @@ class BaseClientBootstrap {
 
   virtual ~BaseClientBootstrap() = default;
 
+  // 设置pipeline工厂
   BaseClientBootstrap<P>* pipelineFactory(
       std::shared_ptr<PipelineFactory<P>> factory) noexcept {
     pipelineFactory_ = factory;
     return this;
   }
 
+  // 获取pipeline
   P* getPipeline() {
     return pipeline_.get();
   }
 
+  // 纯虚接口
   virtual folly::Future<P*> connect(
       const folly::SocketAddress& address,
       std::chrono::milliseconds timeout = std::chrono::milliseconds(0)) = 0;
@@ -53,18 +56,19 @@ class BaseClientBootstrap {
     sslSession_ = sslSession;
     return this;
   }
-
+   
   void setPipeline(const typename P::Ptr& pipeline) {
     pipeline_ = pipeline;
   }
 
+  // 调用设置pipeline工厂创建一个pipeline
   virtual void makePipeline(std::shared_ptr<folly::AsyncSocket> socket) {
     pipeline_ = pipelineFactory_->newPipeline(socket);
   }
 
  protected:
-  std::shared_ptr<PipelineFactory<P>> pipelineFactory_;
-  typename P::Ptr pipeline_;
+  std::shared_ptr<PipelineFactory<P>> pipelineFactory_; // pipeline工厂，必须复写newPipeline纯虚方法
+  typename P::Ptr pipeline_;// newPipeline创建的pipeline
   folly::SSLContextPtr sslContext_;
   SSL_SESSION* sslSession_{nullptr};
 };

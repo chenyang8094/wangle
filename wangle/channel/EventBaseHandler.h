@@ -12,14 +12,14 @@
 
 namespace wangle {
 
+//EventBaseHandler只是一个Outbound类型的Handler,保证无论在哪个线程写，都会定位到socket绑定的eventbase
 class EventBaseHandler : public OutboundBytesToBytesHandler {
  public:
-  folly::Future<folly::Unit> write(
-      Context* ctx,
-      std::unique_ptr<folly::IOBuf> buf) override {
+  folly::Future<folly::Unit> write(Context* ctx,std::unique_ptr<folly::IOBuf> buf) override {
     folly::Future<folly::Unit> retval;
     DCHECK(ctx->getTransport());
     DCHECK(ctx->getTransport()->getEventBase());
+    // 确保无论在哪个Eventbase写，都会重定位到socket所在的eventbase（IO线程）
     ctx->getTransport()->getEventBase()->runImmediatelyOrRunInEventBaseThreadAndWait([&](){
         retval = ctx->fireWrite(std::move(buf));
     });
