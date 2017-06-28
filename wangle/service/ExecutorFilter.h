@@ -30,7 +30,7 @@ class ExecutorFilter : public ServiceFilter<Req, Resp> {
   }
 
  private:
- // 执行器
+ // 执行线程
   std::shared_ptr<folly::Executor> exe_;
 };
 

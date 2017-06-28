@@ -27,7 +27,7 @@ namespace wangle {
 template <typename Req, typename Resp = Req>
 class Service {
 public:
-  // 开始调用
+  // 开始远程调用
   virtual folly::Future<Resp> operator()(Req request) = 0;
   virtual ~Service() = default;
 

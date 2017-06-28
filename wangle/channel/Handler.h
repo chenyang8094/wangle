@@ -43,6 +43,17 @@ private:
 
 // Rin:输入给read的消息类型，Rout:为从read返回时调用Context的fireRead时传递的消息类型，一般情况下与Rin一致
 // Win:为输入给write的消息类型，Wout：为从write返回值调用Context的fireWrite时传递的消息类型，一般情况下与Win一致
+/*
+virtual void read(Context* ctx, Rin msg) override {
+  
+    ctx->fireRead(Rout);
+  }
+
+  virtual folly::Future<folly::Unit> write(Context* ctx, Win b) override {
+
+    return ctx->fireWrite(Wout);
+  }
+*/
 template <class Rin, class Rout = Rin, class Win = Rout, class Wout = Rin>
 class Handler : public HandlerBase<HandlerContext<Rout, Wout>> {
 public:

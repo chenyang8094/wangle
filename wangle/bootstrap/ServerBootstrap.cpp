@@ -15,48 +15,51 @@
 
 namespace wangle {
 
-// io_group->addObserver(workerFactory_);时调用
-void ServerWorkerPool::threadStarted(wangle::ThreadPoolExecutor::ThreadHandle* h) {
-  // 创建一个ServerAcceptor，该Acceptor绑定到一个线程池中
-  auto worker = acceptorFactory_->newAcceptor(exec_->getEventBase(h));
-  {
-    Mutex::WriteHolder holder(workersMutex_.get());
-    // 插入映射（线程句柄、ServerAcceptor）
-    workers_->insert({h, worker});
-  }
+    // io_group->addObserver(workerFactory_);时调用
+    void ServerWorkerPool::threadStarted(wangle::ThreadPoolExecutor::ThreadHandle *h) {
+        // 创建一个ServerAcceptor，该Acceptor绑定到一个线程池中，此处的exec_为IO线程池
+        // exec_->getEventBase(h) 表示获取io线程句柄h对应的eventbase
+        auto worker = acceptorFactory_->newAcceptor(exec_->getEventBase(h));
+        {
+            Mutex::WriteHolder holder(workersMutex_.get());
+            // 插入映射（IO线程句柄、ServerAcceptor）
+            workers_->insert({h, worker});
+        }
 
-  // 遍历所有Listening中的socket
-  for(auto socket : *sockets_) {
-    socket->getEventBase()->runImmediatelyOrRunInEventBaseThreadAndWait(
-      [this, worker, socket](){
-        // 添加accept回调为ServerAcceptor
-        socketFactory_->addAcceptCB(socket, worker.get(), worker->getEventBase());
-    });
-  }
-}
+        // 遍历所有Listening中的socket，理论上在调用bind之前这里应该直接为空
+        for (auto socket : *sockets_) {
+            // 在eventbase中执行
+            socket->getEventBase()->runImmediatelyOrRunInEventBaseThreadAndWait(
+                    [this, worker, socket]() {
+                        // 添加accept回调为ServerAcceptor，也就是会在io线程池中执行ServerAcceptor回调
+                        // 这个回调有connectionAccepted、acceptError、acceptStarted、acceptStopped
+                        socketFactory_->addAcceptCB(socket, worker.get(), worker->getEventBase());
+                    });
+        }
+    }
 
 // 线程停止时
-void ServerWorkerPool::threadStopped(wangle::ThreadPoolExecutor::ThreadHandle* h) {
-  auto worker = [&] {
-    Mutex::WriteHolder holder(workersMutex_.get());
-    auto workerIt = workers_->find(h);
-    CHECK(workerIt != workers_->end());
-    auto w = std::move(workerIt->second);
-    workers_->erase(workerIt); //  移除映射
-    return w;
-  }();
+    void ServerWorkerPool::threadStopped(wangle::ThreadPoolExecutor::ThreadHandle *h) {
+        auto worker = [&] {
+            Mutex::WriteHolder holder(workersMutex_.get());
+            auto workerIt = workers_->find(h);
+            CHECK(workerIt != workers_->end());
+            auto w = std::move(workerIt->second);
+            workers_->erase(workerIt); //  移除映射
+            return w;
+        }();
 
-  for (auto socket : *sockets_) {
-    socket->getEventBase()->runImmediatelyOrRunInEventBaseThreadAndWait(
-      [&]() {
-        socketFactory_->removeAcceptCB(socket, worker.get(), nullptr);
-    });
-  }
+        for (auto socket : *sockets_) {
+            socket->getEventBase()->runImmediatelyOrRunInEventBaseThreadAndWait(
+                    [&]() {
+                        socketFactory_->removeAcceptCB(socket, worker.get(), nullptr);
+                    });
+        }
 
-  worker->getEventBase()->runImmediatelyOrRunInEventBaseThreadAndWait(
-    [&]() {
-      worker->dropAllConnections();
-    });
-}
+        worker->getEventBase()->runImmediatelyOrRunInEventBaseThreadAndWait(
+                [&]() {
+                    worker->dropAllConnections();
+                });
+    }
 
 } // namespace wangle

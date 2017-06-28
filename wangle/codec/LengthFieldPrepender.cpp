@@ -32,27 +32,36 @@ LengthFieldPrepender::LengthFieldPrepender(
   }
 
 Future<Unit> LengthFieldPrepender::write(Context* ctx, std::unique_ptr<IOBuf> buf) {
+  // 总长度为本次要写的数据包的长度加上调整值
   int length = lengthAdjustment_ + buf->computeChainDataLength();
+  // 如果协议长度包含长度字段本身
   if (lengthIncludesLengthField_) {
+    // 那么总长度还需要加上长度字段占用的字节数
     length += lengthFieldLength_;
   }
 
   if (length < 0) {
     throw std::runtime_error("Length field < 0");
   }
-
+  // 发送缓冲区
   auto len = IOBuf::create(lengthFieldLength_);
+  // 多开辟lengthFieldLength_
   len->append(lengthFieldLength_);
+  // 接收缓冲区的游标（处于最开始位置），便于按字节操作
   folly::io::RWPrivateCursor c(len.get());
 
+  // 散转长度字段占用的字节数，最多八个字节
   switch (lengthFieldLength_) {
     case 1: {
       if (length >= 256) {
         throw std::runtime_error("length does not fit byte");
       }
+      // 如果按照网络字节序
       if (networkByteOrder_) {
+        // 大端形式写
         c.writeBE((uint8_t)length);
       } else {
+        // 小端形式写
         c.writeLE((uint8_t)length);
       }
       break;
@@ -89,6 +98,7 @@ Future<Unit> LengthFieldPrepender::write(Context* ctx, std::unique_ptr<IOBuf> bu
     }
   }
 
+  // 把buf合并到len中
   len->prependChain(std::move(buf));
   return ctx->fireWrite(std::move(len));
 }

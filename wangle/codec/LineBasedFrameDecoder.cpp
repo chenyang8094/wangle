@@ -27,6 +27,7 @@ bool LineBasedFrameDecoder::decode(Context* ctx,
                                    IOBufQueue& buf,
                                    std::unique_ptr<IOBuf>& result,
                                    size_t&) {
+  // 在buf中寻找行结束符，返回值为行结束符下标
   int64_t eol = findEndOfLine(buf);
 
   if (!discarding_) {

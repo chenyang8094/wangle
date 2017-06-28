@@ -23,6 +23,7 @@ class ClientDispatcherBase : public HandlerAdapter<Resp, Req>, public Service<Re
   ~ClientDispatcherBase() {
     if (pipeline_) {
       try {
+        // 把自己从Pipeline中删除
         pipeline_->remove(this).finalize();
       } catch (const std::invalid_argument& e) {
         // not in pipeline; this is fine
@@ -37,6 +38,7 @@ class ClientDispatcherBase : public HandlerAdapter<Resp, Req>, public Service<Re
       // no existing dispatcher; this is fine
     }
     pipeline_ = pipeline;
+    // 把自己添加到Pipeline
     pipeline_->addBack(this);
     pipeline_->finalize();
   }
@@ -65,26 +67,30 @@ class SerialClientDispatcher : public ClientDispatcherBase<Pipeline, Req, Resp> 
 
   // 接收response
   void read(Context*, Resp in) override {
+    // p_必须已经初始化
     DCHECK(p_);
-    // 设置future
+    // 填充Promise
     p_->setValue(std::move(in));
+    // 清楚p_初始化标记，为下次请求做准备
     p_ = folly::none;
   }
 
   // 发送request
   virtual folly::Future<Resp> operator()(Req arg) override {
+    // p_必须是第一次初始化
     CHECK(!p_);
     DCHECK(this->pipeline_);
 
     // 创建Promise
     p_ = folly::Promise<Resp>();
+    // 获取结果Future
     auto f = p_->getFuture();
     this->pipeline_->write(std::move(arg));
     return f;
   }
 
  private:
-  folly::Optional<folly::Promise<Resp>> p_;
+  folly::Optional<folly::Promise<Resp>> p_;// 注意Optional标记p_是否初始化过
 };
 
 /**
@@ -99,6 +105,7 @@ class PipelinedClientDispatcher : public ClientDispatcherBase<Pipeline, Req, Res
   typedef typename HandlerAdapter<Resp, Req>::Context Context;
 
   void read(Context*, Resp in) override {
+    // 队列大小至少为1
     DCHECK(p_.size() >= 1);
     // 按顺序取出promise
     auto p = std::move(p_.front());
@@ -118,7 +125,7 @@ class PipelinedClientDispatcher : public ClientDispatcherBase<Pipeline, Req, Res
   }
 
  private:
-  std::deque<folly::Promise<Resp>> p_;//队列
+  std::deque<folly::Promise<Resp>> p_;//区别
 };
 
 /*

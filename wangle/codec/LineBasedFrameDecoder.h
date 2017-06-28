@@ -46,12 +46,12 @@ class LineBasedFrameDecoder : public ByteToByteDecoder {
   void fail(Context* ctx, std::string len);
 
   uint32_t maxLength_;
-  bool stripDelimiter_;
+  bool stripDelimiter_;// 是否丢弃分隔符
 
-  bool discarding_{false};
+  bool discarding_{false};// 是否丢弃
   uint32_t discardedBytes_{0};
 
-  TerminatorType terminatorType_;
+  TerminatorType terminatorType_; // 终止符类型
 };
 
 } // namespace wangle

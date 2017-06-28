@@ -21,6 +21,8 @@ namespace wangle {
 /*
  * A thin wrapper around Pipeline and AsyncSocket to match
  * ServerBootstrap.  On connect() a new pipeline is created.
+ *
+ * 其实wangle中的
  */
 template <typename Pipeline>
 class ClientBootstrap : public BaseClientBootstrap<Pipeline> {
@@ -74,7 +76,7 @@ class ClientBootstrap : public BaseClientBootstrap<Pipeline> {
     auto base = (group_)  
       ? group_->getEventBase()
       : folly::EventBaseManager::get()->getEventBase();
-    //  定义一个future，用于异步获取connect结果（值为一个pipeline）
+    //  定义一个future，用于异步获取connect结果（值为一个pipeline*）
     folly::Future<Pipeline*> retval((Pipeline*)nullptr);
     base->runImmediatelyOrRunInEventBaseThreadAndWait([&](){
       // 定义一个异步socket

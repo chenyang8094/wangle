@@ -46,8 +46,7 @@ class EchoPipelineFactory : public PipelineFactory<EchoPipeline> {
   EchoPipeline::Ptr newPipeline(std::shared_ptr<AsyncTransportWrapper> sock) {
     auto pipeline = EchoPipeline::create();
     pipeline->addBack(AsyncSocketHandler(sock));
-    pipeline->addBack(
-        EventBaseHandler()); // ensure we can write from any thread
+    pipeline->addBack(EventBaseHandler()); // ensure we can write from any thread
     pipeline->addBack(LineBasedFrameDecoder(8192, false));
     pipeline->addBack(StringCodec());
     pipeline->addBack(EchoHandler());

@@ -37,16 +37,19 @@ bool LengthFieldBasedFrameDecoder::decode(Context* ctx,
                                           IOBufQueue& buf,
                                           std::unique_ptr<IOBuf>& result,
                                           size_t&) {
-  // discarding too long frame
+  // 如果读到的数据包长度还不足以读取长度字段，那么直接返回解码失败
   if (buf.chainLength() < lengthFieldEndOffset_) {
     return false;
   }
 
+  // 解码获取未经调整的帧长度
   uint64_t frameLength = getUnadjustedFrameLength(
     buf, lengthFieldOffset_, lengthFieldLength_, networkByteOrder_);
 
+  // 对帧长度进行调整
   frameLength += lengthAdjustment_ + lengthFieldEndOffset_;
 
+  // 如果帧长度小于长度字段结束位置的偏移
   if (frameLength < lengthFieldEndOffset_) {
     buf.trimStart(lengthFieldEndOffset_);
     ctx->fireReadException(folly::make_exception_wrapper<std::runtime_error>(
@@ -54,6 +57,7 @@ bool LengthFieldBasedFrameDecoder::decode(Context* ctx,
     return false;
   }
 
+  // 如果帧长度大于最大长度
   if (frameLength > maxFrameLength_) {
     buf.trimStart(frameLength);
     ctx->fireReadException(folly::make_exception_wrapper<std::runtime_error>(
@@ -62,18 +66,22 @@ bool LengthFieldBasedFrameDecoder::decode(Context* ctx,
     return false;
   }
 
+  // 如果已经读到的数据包长度小于帧长度
   if (buf.chainLength() < frameLength) {
+    // 返回解码失败
     return false;
   }
 
+  // 如果要初始化丢弃的字节数比帧长度还要大
   if (initialBytesToStrip_ > frameLength) {
     buf.trimStart(frameLength);
     ctx->fireReadException(folly::make_exception_wrapper<std::runtime_error>(
                              "InitialBytesToSkip larger than frame"));
     return false;
   }
-
+  // 丢弃字节数
   buf.trimStart(initialBytesToStrip_);
+  // 计算最终的实际长度
   int actualFrameLength = frameLength - initialBytesToStrip_;
   result = buf.split(actualFrameLength);
   return true;

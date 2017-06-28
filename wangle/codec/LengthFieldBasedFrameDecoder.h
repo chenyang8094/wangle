@@ -193,14 +193,15 @@ class LengthFieldBasedFrameDecoder : public ByteToByteDecoder {
   uint64_t getUnadjustedFrameLength(
     folly::IOBufQueue& buf, int offset, int length, bool networkByteOrder);
 
-  uint32_t lengthFieldLength_;
-  uint32_t maxFrameLength_;
-  uint32_t lengthFieldOffset_;
-  int32_t lengthAdjustment_;
-  uint32_t initialBytesToStrip_;
-  bool networkByteOrder_;
 
-  uint32_t lengthFieldEndOffset_;
+  uint32_t lengthFieldLength_;// 长度字段本身占用字节数
+  uint32_t maxFrameLength_;// 帧最大长度
+  uint32_t lengthFieldOffset_;// 长度字段在帧中的偏移字节数
+  int32_t lengthAdjustment_;// 长度调整值
+  uint32_t initialBytesToStrip_;// 初始化丢弃的字节数
+  bool networkByteOrder_;// 是否是网络字节序
+
+  uint32_t lengthFieldEndOffset_;// 长度字段结束位置在帧中的偏移位置 lengthFieldOffset + lengthFieldLength
 };
 
 } // namespace wangle

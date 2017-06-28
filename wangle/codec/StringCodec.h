@@ -26,6 +26,7 @@ class StringCodec : public Handler<std::unique_ptr<folly::IOBuf>, std::string,
 
   void read(Context* ctx, std::unique_ptr<folly::IOBuf> buf) override {
     if (buf) {
+        // 合并IOBuf链到一个单独的IOBuf中
       buf->coalesce();
       std::string data((const char*)buf->data(), buf->length());
       ctx->fireRead(data);
@@ -33,6 +34,7 @@ class StringCodec : public Handler<std::unique_ptr<folly::IOBuf>, std::string,
   }
 
   folly::Future<folly::Unit> write(Context* ctx, std::string msg) override {
+      // 直接从字符换构造IOBuf
     auto buf = folly::IOBuf::copyBuffer(msg.data(), msg.length());
     return ctx->fireWrite(std::move(buf));
   }

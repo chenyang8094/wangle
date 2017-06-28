@@ -53,10 +53,11 @@ class LengthFieldPrepender : public OutboundBytesToBytesHandler {
       std::unique_ptr<folly::IOBuf> buf);
 
  private:
-  int lengthFieldLength_;
-  int lengthAdjustment_;
-  bool lengthIncludesLengthField_;
-  bool networkByteOrder_;
+
+  int lengthFieldLength_;// 长度字段对应的长度（字节数）
+  int lengthAdjustment_;// 长度调整值
+  bool lengthIncludesLengthField_;// 帧长度是否包含长度字段本身
+  bool networkByteOrder_; // 网络字节序
 };
 
 } // namespace wangle

@@ -191,7 +191,7 @@ if(BUILD_TESTS)
   #  add_gtest(service/ServiceTest.cpp ServiceTest)
   # this test requires arguments?
   #  add_gtest(ssl/test/SSLCacheTest.cpp SSLCacheTest)
-  add_gtest(ssl/test/SSLContextManagerTest.cpp SSLContextManagerTest)
+   add_gtest(ssl/test/SSLContextManagerTest.cpp SSLContextManagerTest)
   add_gtest(ssl/test/TLSCredProcessorTest.cpp TLSCredProcessorTest)
   add_gtest(util/test/FilePollerTest.cpp FilePollerTest)
 endif()

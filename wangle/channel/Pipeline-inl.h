@@ -294,6 +294,9 @@ void Pipeline<R, W>::finalize() {
   if (!outCtxs_.empty()) {
     back_ = dynamic_cast<OutboundLink<W>*>(outCtxs_.back());
     for (size_t i = outCtxs_.size() - 1; i > 0; i--) {
+      // PipelineContext
+      // auto nextOut = dynamic_cast<OutboundLink<typename H::wout> *>(ctx);
+      // nextOut_ = nextOut;
       outCtxs_[i]->setNextOut(outCtxs_[i - 1]);
     }
     outCtxs_.front()->setNextOut(nullptr);
@@ -311,6 +314,10 @@ void Pipeline<R, W>::finalize() {
   }
 
   for (auto it = ctxs_.rbegin(); it != ctxs_.rend(); it++) {
+    // PipelineContext
+    // this->attachContext(handler_.get(), impl_);// 将该Context绑定到handler上
+    // handler_->attachPipeline(impl_); // 调用Handler的attachPipeline，有具体的Handler实现
+    // attached_ = true;//标记Context已经attached到一个pipeline中
     (*it)->attachPipeline();
   }
 }

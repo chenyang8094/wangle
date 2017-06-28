@@ -50,10 +50,14 @@ class ByteToMessageDecoder : public InboundHandler<folly::IOBufQueue&, M> {
   void read(Context* ctx, folly::IOBufQueue& q) override {
     bool success = true;
     do {
+      // Rout类型
       M result;
+      // 解码还需要的字节数
       size_t needed = 0;
+      // 解码
       success = decode(ctx, q, result, needed);
       if (success) {
+        // 只有解码成功，事件才会继续往下传播
         ctx->fireRead(std::move(result));
       }
     } while (success);

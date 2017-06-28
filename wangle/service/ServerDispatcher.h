@@ -49,29 +49,35 @@ public:
     : service_(service) {}
 
   void read(Context*, Req in) override {
+      // 更新请求Id
     auto requestId = requestId_++;
+      // 异步调用
     (*service_)(std::move(in)).then([requestId, this](Resp & resp) {
-      responses_[requestId] = resp;
-      sendResponses();
+      responses_[requestId] = resp;// 加入映射
+      sendResponses();// 发送响应
     });
   }
 
   void sendResponses() {
+      // 上次发送的请求id加1就是本次请求id，根据id得到响应
     auto search = responses_.find(lastWrittenId_ + 1);
     while (search != responses_.end()) {
       Resp resp = std::move(search->second);
       responses_.erase(search->first);
+        // 响应网络传输
       this->getContext()->fireWrite(std::move(resp));
+        // 更新
       lastWrittenId_++;
+        // 是否还有响应没有发送
       search = responses_.find(lastWrittenId_ + 1);
     }
   }
 
 private:
   Service<Req, Resp>* service_;
-  uint32_t requestId_{1};
-  std::unordered_map<uint32_t, Resp> responses_;
-  uint32_t lastWrittenId_{0};
+  uint32_t requestId_{1};//  请求id
+  std::unordered_map<uint32_t, Resp> responses_;// 请求id和响应的映射
+  uint32_t lastWrittenId_{0};// 上一次响应的请求id
 };
 
 /**

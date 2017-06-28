@@ -83,11 +83,13 @@ class AsyncSocketHandler: public wangle::BytesToBytesHandler,public folly::Async
   }
 
   folly::Future<folly::Unit> write(Context* ctx,std::unique_ptr<folly::IOBuf> buf) override {
+    // 可写之前刷新超时时间
     refreshTimeout();
     if (UNLIKELY(!buf)) {
       return folly::makeFuture();
     }
 
+    // 写之前判断当前的连接状态
     if (!socket_->good()) {
       VLOG(5) << "socket is closed in write()";
       return folly::makeFuture<folly::Unit>(folly::AsyncSocketException(
@@ -136,8 +138,10 @@ class AsyncSocketHandler: public wangle::BytesToBytesHandler,public folly::Async
   //EventHandler::libeventCallback==》handler->handlerReady==》socket_->ioReady(events);==》handleRead()/handleWrite();
   //readCallback_->readDataAvailable(bytesRead);
   void readDataAvailable(size_t len) noexcept override {
+    // 可以读的时候刷新超时时间
     refreshTimeout();
     bufQueue_.postallocate(len);
+    // 在pipeline中引发这个事件传播
     getContext()->fireRead(bufQueue_);
   }
 
@@ -152,6 +156,7 @@ class AsyncSocketHandler: public wangle::BytesToBytesHandler,public folly::Async
   }
 
  private:
+  // 刷新时间，在pipeline read和write之前都会调用refreshTimeout，上层应用可以自己更新超时时间
   void refreshTimeout() {
     auto manager = getContext()->getPipeline()->getPipelineManager();
     if (manager) {
